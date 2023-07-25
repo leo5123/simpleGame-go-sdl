@@ -25,6 +25,8 @@ var (
 	textureIndex      map[game.Tile][]sdl.Rect
 	keyboardState     []uint8
 	prevKeyboardState []uint8
+	centerX           int
+	centerY           int
 )
 
 func loadTextureIndex() {
@@ -152,16 +154,47 @@ func init() {
 	for i, v := range keyboardState {
 		prevKeyboardState[i] = v
 	}
+
+	centerX = -1
+	centerY = -1
 }
 
 func (ui *UI2d) Draw(level *game.Level) {
+	if centerX == -1 && centerY == -1 {
+		centerX = level.Player.X
+		centerY = level.Player.Y
+	}
+
+	limit := 5
+	if level.Player.X > centerX+limit {
+		centerX++
+	}
+	if level.Player.X < centerX-limit {
+		centerX--
+	}
+	if level.Player.Y > centerY+limit {
+		centerY++
+	}
+	if level.Player.Y < centerY-limit {
+		centerY--
+	}
+
+	offsetX := int32((winWidth / 2) - centerX*32)
+	offsetY := int32((winWidth / 2) - (centerY+8)*32)
+
+	renderer.Clear()
 	rand.Seed(1)
 	for y, row := range level.Map {
 		for x, tile := range row {
 			if tile != game.Blank {
 				srcRects := textureIndex[tile]
 				srcRect := srcRects[rand.Intn(len(srcRects))]
-				dstRect := sdl.Rect{int32(x * 32), int32(y * 32), 32, 32}
+				dstRect := sdl.Rect{
+					X: int32(x*32) + offsetX,
+					Y: int32(y*32) + offsetY,
+					W: 32,
+					H: 32,
+				}
 				renderer.Copy(textureAtlas, &srcRect, &dstRect)
 			}
 		}
@@ -172,8 +205,8 @@ func (ui *UI2d) Draw(level *game.Level) {
 		W: 32,
 		H: 32,
 	}, &sdl.Rect{
-		X: int32(level.Player.X) * 32,
-		Y: int32(level.Player.Y) * 32,
+		X: int32(level.Player.X)*32 + offsetX,
+		Y: int32(level.Player.Y)*32 + offsetY,
 		W: 32,
 		H: 32,
 	})
@@ -185,8 +218,9 @@ func (ui *UI2d) GetInput() *game.Input {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch event.(type) {
 			case *sdl.QuitEvent:
-				return &game.Input{game.Quit}
-
+				return &game.Input{
+					Typ: game.Quit,
+				}
 			}
 		}
 		var input game.Input
@@ -201,6 +235,9 @@ func (ui *UI2d) GetInput() *game.Input {
 		}
 		if keyboardState[sdl.SCANCODE_RIGHT] == 0 && prevKeyboardState[sdl.SCANCODE_RIGHT] != 0 {
 			input.Typ = game.Right
+		}
+		if keyboardState[sdl.SCANCODE_E] == 0 && prevKeyboardState[sdl.SCANCODE_E] != 0 {
+			input.Typ = game.Action
 		}
 		for i, v := range keyboardState {
 			prevKeyboardState[i] = v

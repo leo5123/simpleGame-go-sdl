@@ -16,7 +16,8 @@ type GameUI interface {
 const (
 	GrassCliff Tile = '#'
 	Grass      Tile = '.'
-	Door       Tile = 'x'
+	ClosedDoor Tile = 'X'
+	OpenDoor   Tile = 'x'
 	Blank      Tile = 0
 	Pending    Tile = -1
 	Test       Tile = 't'
@@ -31,6 +32,7 @@ const (
 	Left
 	Right
 	Quit
+	Action
 )
 
 type Input struct {
@@ -87,8 +89,10 @@ func loadLevelFromFile(fileName string) *Level {
 				t = GrassCliff
 			case '.':
 				t = Grass
+			case 'X':
+				t = ClosedDoor
 			case 'x':
-				t = Door
+				t = OpenDoor
 			case 'P':
 				level.Player.X = x
 				level.Player.Y = y
@@ -126,10 +130,23 @@ func loadLevelFromFile(fileName string) *Level {
 func canWalk(level *Level, x, y int) bool {
 	t := level.Map[x][y]
 	switch t {
-	case GrassCliff, Door, Blank:
+	case GrassCliff, ClosedDoor, Blank:
 		return false
 	default:
 		return true
+	}
+}
+
+func isDoor(level *Level, x, y int, input InputType) {
+	if input == Action {
+		if level.Map[x][y] == OpenDoor {
+			level.Map[x][y] = ClosedDoor
+			return
+		}
+		if level.Map[x][y] == ClosedDoor {
+			level.Map[x][y] = OpenDoor
+			return
+		}
 	}
 }
 
@@ -152,6 +169,8 @@ func handleInput(level *Level, input *Input) {
 		if canWalk(level, p.Y, p.X+1) {
 			level.Player.X++
 		}
+	case Action:
+		isDoor(level, p.Y, p.X+1, Action)
 	}
 }
 
