@@ -138,15 +138,14 @@ func canWalk(level *Level, x, y int) bool {
 }
 
 func isDoor(level *Level, x, y int, input InputType) {
-	if input == Action {
-		if level.Map[x][y] == OpenDoor {
-			level.Map[x][y] = ClosedDoor
-			return
-		}
-		if level.Map[x][y] == ClosedDoor {
-			level.Map[x][y] = OpenDoor
-			return
-		}
+	t := level.Map[x][y]
+	if t == OpenDoor {
+		level.Map[x][y] = ClosedDoor
+		return
+	}
+	if t == ClosedDoor {
+		level.Map[x][y] = OpenDoor
+		return
 	}
 }
 
@@ -171,6 +170,9 @@ func handleInput(level *Level, input *Input) {
 		}
 	case Action:
 		isDoor(level, p.Y, p.X+1, Action)
+		isDoor(level, p.Y, p.X-1, Action)
+		isDoor(level, p.Y+1, p.X, Action)
+		isDoor(level, p.Y-1, p.X, Action)
 	}
 }
 
