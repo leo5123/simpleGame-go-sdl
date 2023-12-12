@@ -3,7 +3,9 @@ package game
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
+	"time"
 )
 
 type Tile rune
@@ -33,14 +35,19 @@ const (
 	Right
 	Quit
 	Action
+	Search //
 )
 
 type Input struct {
 	Typ InputType
 }
 
-type Entity struct {
+type Pos struct {
 	X, Y int
+}
+
+type Entity struct {
+	Pos
 }
 
 type Player struct {
@@ -50,6 +57,7 @@ type Player struct {
 type Level struct {
 	Map [][]Tile
 	Player
+	Debug map[Pos]bool
 }
 
 func loadLevelFromFile(fileName string) *Level {
@@ -110,9 +118,9 @@ func loadLevelFromFile(fileName string) *Level {
 		for x, tile := range row {
 			if tile == Pending {
 			SearchLoop:
-				for searchX := x - 1; searchX < x+1; searchX++ {
+				for searchX := x - 1; searchX <= x+1; searchX++ {
 					for searchY := y - 1; searchY <= y+1; searchY++ {
-						searchTile := level.Map[searchY][searchX]
+						searchTile := level.Map[searchY][searchY]
 						switch searchTile {
 						case Grass:
 							level.Map[y][x] = Grass
@@ -127,8 +135,8 @@ func loadLevelFromFile(fileName string) *Level {
 	return level
 }
 
-func canWalk(level *Level, x, y int) bool {
-	t := level.Map[x][y]
+func canWalk(level *Level, pos Pos) bool {
+	t := level.Map[pos.Y][pos.X]
 	switch t {
 	case GrassCliff, ClosedDoor, Blank:
 		return false
@@ -137,43 +145,141 @@ func canWalk(level *Level, x, y int) bool {
 	}
 }
 
-func isDoor(level *Level, x, y int, input InputType) {
-	t := level.Map[x][y]
+func isDoor(level *Level, pos Pos, input InputType) {
+	t := level.Map[pos.Y][pos.X]
 	if t == OpenDoor {
-		level.Map[x][y] = ClosedDoor
+		level.Map[pos.Y][pos.X] = ClosedDoor
 		return
 	}
 	if t == ClosedDoor {
-		level.Map[x][y] = OpenDoor
+		level.Map[pos.Y][pos.X] = OpenDoor
 		return
 	}
 }
 
-func handleInput(level *Level, input *Input) {
+func handleInput(ui GameUI, level *Level, input *Input) {
 	p := level.Player
 	switch input.Typ {
 	case Up:
-		if canWalk(level, p.Y-1, p.X) {
+		if canWalk(level, Pos{Y: p.Y - 1, X: p.X}) {
 			level.Player.Y--
 		}
 	case Down:
-		if canWalk(level, p.Y+1, p.X) {
+		if canWalk(level, Pos{Y: p.Y + 1, X: p.X}) {
 			level.Player.Y++
 		}
 	case Left:
-		if canWalk(level, p.Y, p.X-1) {
+		if canWalk(level, Pos{Y: p.Y, X: p.X - 1}) {
 			level.Player.X--
 		}
 	case Right:
-		if canWalk(level, p.Y, p.X+1) {
+		if canWalk(level, Pos{Y: p.Y, X: p.X + 1}) {
 			level.Player.X++
 		}
+	case Search:
+		// bfs(ui, level, level.Player.Pos)
+		astar(ui, level, level.Player.Pos, Pos{X: 66, Y: 7})
+		fmt.Println(level.Player.X, level.Player.Y)
 	case Action:
-		isDoor(level, p.Y, p.X+1, Action)
-		isDoor(level, p.Y, p.X-1, Action)
-		isDoor(level, p.Y+1, p.X, Action)
-		isDoor(level, p.Y-1, p.X, Action)
+		isDoor(level, Pos{Y: p.Y, X: p.X + 1}, Action)
+		isDoor(level, Pos{Y: p.Y, X: p.X - 1}, Action)
+		isDoor(level, Pos{Y: p.Y + 1, X: p.X}, Action)
+		isDoor(level, Pos{Y: p.Y - 1, X: p.X}, Action)
 	}
+}
+
+func getNeighbors(level *Level, pos Pos) []Pos {
+	neighbors := make([]Pos, 0, 4)
+
+	left := Pos{X: pos.X - 1, Y: pos.Y}
+	right := Pos{X: pos.X + 1, Y: pos.Y}
+	down := Pos{X: pos.X, Y: pos.Y - 1}
+	up := Pos{X: pos.X, Y: pos.Y + 1}
+
+	if canWalk(level, right) {
+		neighbors = append(neighbors, right)
+	}
+	if canWalk(level, left) {
+		neighbors = append(neighbors, left)
+	}
+	if canWalk(level, down) {
+		neighbors = append(neighbors, down)
+	}
+	if canWalk(level, up) {
+		neighbors = append(neighbors, up)
+	}
+
+	return neighbors
+}
+
+func bfs(ui GameUI, level *Level, start Pos) {
+	frontier := make([]Pos, 0, 8)
+	frontier = append(frontier, start)
+	visited := make(map[Pos]bool)
+	visited[start] = true
+	level.Debug = visited
+
+	for len(frontier) > 0 {
+		current := frontier[0]
+		frontier = frontier[1:]
+		for _, next := range getNeighbors(level, current) {
+			if !visited[next] {
+				frontier = append(frontier, next)
+				visited[next] = true
+				ui.Draw(level)
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}
+}
+
+func astar(ui GameUI, level *Level, start Pos, goal Pos) []Pos {
+	frontier := make(pqueue, 0, 4)
+	frontier = frontier.push(start, 1)
+	cameFrom := make(map[Pos]Pos)
+	costSoFar := make(map[Pos]int, 0)
+	costSoFar[start] = 0
+
+	level.Debug = make(map[Pos]bool)
+
+	var current Pos
+
+	for len(frontier) > 0 {
+		frontier, current = frontier.pop()
+
+		if current == goal {
+			path := make([]Pos, 0)
+			p := current
+			for p != start {
+				path = append(path, p)
+				p = cameFrom[p]
+			}
+			path = append(path, p)
+			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+				path[i], path[j] = path[j], path[i]
+			}
+			for _, pos := range path {
+				level.Debug[pos] = true
+				ui.Draw(level)
+				time.Sleep(100 * time.Millisecond)
+			}
+			return path
+		}
+		for _, next := range getNeighbors(level, current) {
+			newCost := costSoFar[current] + 1
+			_, exists := costSoFar[next]
+			if !exists || newCost < costSoFar[next] {
+				costSoFar[next] = newCost
+				xDist := int(math.Abs(float64(goal.X - next.X)))
+				yDist := int(math.Abs(float64(goal.X - next.X)))
+				priority := newCost + xDist + yDist
+				frontier = frontier.push(next, priority)
+				cameFrom[next] = current
+			}
+		}
+	}
+
+	return nil
 }
 
 func Run(ui GameUI) {
@@ -186,7 +292,6 @@ func Run(ui GameUI) {
 			return
 		}
 
-		handleInput(level, input)
-
+		handleInput(ui, level, input)
 	}
 }
